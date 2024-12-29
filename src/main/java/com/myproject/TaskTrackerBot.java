@@ -44,7 +44,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
     private final Map<Long, Long> taskIdToUpdate = new ConcurrentHashMap<>();
     private final Map<Long, TaskDetailsState> taskDetailsState = new ConcurrentHashMap<>();
 
-
     {
         Properties properties = new Properties();
         try (InputStream input = getClass().getClassLoader().getResourceAsStream("telegram.properties")) {
@@ -76,7 +75,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             userService.createUser(adminUser);
         }
     }
-
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -214,6 +212,11 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
             LocalDate deadlineDate = LocalDate.parse(data.get("deadline"), dateFormatter);
             Date deadline = java.sql.Date.valueOf(deadlineDate);
+            if (deadlineDate.isBefore(LocalDate.now())) {
+                sendMessage(chatId, "Дедлайн не може бути в минулому. Будь ласка, введіть коректну дату.");
+                return;
+            }
+            System.out.println("ASdasdadasdasd");
             Long taskUserId = Long.parseLong(data.get("teacherId"));
             Optional<User> userOptional = userService.getUserById(taskUserId);
             if (userOptional.isPresent()){
@@ -221,6 +224,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 Task newTask = new Task(title, description, deadline, TaskStatus.PENDING, user);
                 taskService.createTask(newTask);
                 sendMessage(chatId, "Завдання створено з id: " + newTask.getId());
+                sendNewTaskNotification(user.getChatId(), newTask);
             } else {
                 sendMessage(chatId,"Користувача з id: " + taskUserId + " не знайдено");
             }
@@ -229,6 +233,11 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         } catch (NumberFormatException e) {
             sendMessage(chatId,"Невірний ID користувача. Будь ласка, введіть коректний номер");
         }
+    }
+    private void sendNewTaskNotification(Long chatId, Task task) {
+        String notificationText = String.format("<b>Нове завдання</b>\n<b>Заголовок:</b> %s\n<b>Дедлайн:</b> %s\n",
+                task.getTitle(), new SimpleDateFormat("yyyy-MM-dd").format(task.getDeadline()));
+        sendMessage(chatId, notificationText);
     }
     private void registerUser(Long chatId, String name, UserRole role) {
         Optional<User> userOptional = userService.getUserByChatId(chatId);
@@ -499,7 +508,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         }
         sendMessage(chatId, helpText);
     }
-
     private UserRole getUserRole(Long chatId) {
         Long userId = getUserIdFromChatId(chatId);
         if (userId != null) {
@@ -509,6 +517,23 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             return userRoles.get(chatId);
         } else{
             return UserRole.TEACHER;
+        }
+    }
+    private void sendMessage(Long chatId, String text) {
+        sendMessage(chatId, text, null);
+    }
+    private void sendMessage(Long chatId, String text, InlineKeyboardMarkup markup) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.enableHtml(true);
+        if (markup != null) {
+            message.setReplyMarkup(markup);
+        }
+        try {
+            this.execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
         }
     }
     private InlineKeyboardMarkup createCommandKeyboard(UserRole userRole) {
@@ -555,7 +580,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         markup.setKeyboard(keyboard);
         return markup;
     }
-
     private void listUsers(Long chatId) {
         List<User> users = userService.getAllUsers();
         if(users.isEmpty()) {
@@ -592,7 +616,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                     sendMessage(chatId, "Завдань для користувача " + user.getName() + " не знайдено");
                 } else {
                     String taskList = tasks.stream()
-                            .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок: %s</b> \n<b>Дедлайн:</b> %s\n<b>Статус:</b> %s",
+                            .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Дедлайн:</b> %s\n<b>Статус:</b> %s",
                                     task.getId(), task.getTitle(), new SimpleDateFormat("yyyy-MM-dd").format(task.getDeadline()), task.getStatus()))
                             .collect(Collectors.joining("\n\n"));
                     sendMessage(chatId, taskList);
@@ -602,24 +626,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             }
         } else {
             sendMessage(chatId, "Користувача не знайдено");
-        }
-    }
-
-    private void sendMessage(Long chatId, String text) {
-        sendMessage(chatId, text, null);
-    }
-    private void sendMessage(Long chatId, String text, InlineKeyboardMarkup markup) {
-        SendMessage message = new SendMessage();
-        message.setChatId(String.valueOf(chatId));
-        message.setText(text);
-        message.enableHtml(true);
-        if (markup != null) {
-            message.setReplyMarkup(markup);
-        }
-        try {
-            this.execute(message);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
         }
     }
     public enum CallbackData {
