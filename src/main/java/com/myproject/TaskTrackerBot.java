@@ -47,6 +47,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
     private final Map<Long, TaskUpdateState> taskUpdateState = new ConcurrentHashMap<>();
     private final Map<Long, Long> taskIdToUpdate = new ConcurrentHashMap<>();
     private final Map<Long, TaskDetailsState> taskDetailsState = new ConcurrentHashMap<>();
+    private final Map<Long, TaskDeletionState> taskDeletionState = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
 
@@ -64,8 +65,9 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             throw new RuntimeException("Помилка при завантаженні налаштувань", ex);
         }
         createDefaultUsers();
-        scheduler.scheduleAtFixedRate(this::checkTaskDeadlines, 0, 12, TimeUnit.HOURS);
+        scheduler.scheduleAtFixedRate(this::checkTaskDeadlines, 0, 1, TimeUnit.HOURS);
     }
+
     @Override
     public String getBotUsername() {
         return botUsername;
@@ -81,6 +83,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             userService.createUser(adminUser);
         }
     }
+
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -107,6 +110,10 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             }
             if (taskDetailsState.containsKey(chatId)) {
                 handleTaskDetailsMessage(chatId, messageText);
+                return;
+            }
+            if (taskDeletionState.containsKey(chatId)) {
+                handleTaskDeletionMessage(chatId, messageText);
                 return;
             }
             handleCommand(chatId,parts);
@@ -171,6 +178,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 }
                 break;
         }
+
     }
     private void handleTaskDetailsMessage(Long chatId, String messageText) {
         TaskDetailsState state = taskDetailsState.get(chatId);
@@ -192,6 +200,24 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             }
         }
     }
+    private void handleTaskDeletionMessage(Long chatId, String messageText){
+        TaskDeletionState state = taskDeletionState.get(chatId);
+        if (state == TaskDeletionState.ID) {
+            try {
+                Long taskId = Long.parseLong(messageText);
+                Optional<Task> taskOptional = taskService.getTaskById(taskId);
+                if (taskOptional.isPresent()){
+                    taskService.deleteTask(taskId);
+                    sendMessage(chatId, "Завдання з ID: " + taskId + " видалено.");
+                } else {
+                    sendMessage(chatId, "Завдання з id: " + taskId + " не знайдено");
+                }
+                taskDeletionState.remove(chatId);
+            } catch (NumberFormatException e) {
+                sendMessage(chatId,"Невірний ID завдання. Будь ласка, введіть коректний номер");
+            }
+        }
+    }
     private void showAllUsers(Long chatId) {
         List<User> users = userService.getAllUsers();
         if (users.isEmpty()) {
@@ -207,6 +233,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             taskCreationState.put(chatId, TaskCreationState.TEACHER_ID);
         }
     }
+
     private void createTaskFromData(Long chatId, Map<String, String> data) {
         try {
             String title = data.get("title");
@@ -290,6 +317,13 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             case "/taskDetails":
                 handleTaskDetailsCommand(chatId, userId, userRole);
                 break;
+            case "/deleteTask":
+                if (userRole == UserRole.ADMIN) {
+                    handleDeleteTaskCommand(chatId);
+                } else {
+                    sendMessage(chatId, "У вас немає прав для видалення завдань.");
+                }
+                break;
             default:
                 sendMessage(chatId, "Невідома команда!");
                 break;
@@ -360,6 +394,10 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         }
         taskUpdateState.put(chatId, TaskUpdateState.ID);
     }
+    private void handleDeleteTaskCommand(Long chatId) {
+        sendMessage(chatId, "Будь ласка, введіть ID завдання, яке потрібно видалити:");
+        taskDeletionState.put(chatId, TaskDeletionState.ID);
+    }
     private void handleCallbackQuery(CallbackQuery callbackQuery) {
         String callbackData = callbackQuery.getData();
         Long chatId = callbackQuery.getMessage().getChatId();
@@ -404,6 +442,13 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 case COMPLETED:
                 case OVERDUE:
                     handleUpdateTaskStatus(chatId, callback);
+                    break;
+                case DELETE_TASK:
+                    if (userRole == UserRole.ADMIN) {
+                        handleDeleteTaskCommand(chatId);
+                    } else {
+                        sendMessage(chatId, "У вас немає прав для видалення завдань.");
+                    }
                     break;
             }
         }catch (IllegalArgumentException e) {
@@ -496,6 +541,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                     + "/updateTask - Оновити статус завдання\n"
                     + "/listUsers - Переглянути всіх користувачів\n"
                     + "/taskDetails - Переглянути деталі завдання\n"
+                    + "/deleteTask - Видалити завдання\n"
                     + "/help - Показати це повідомлення";
         }else {
             helpText = "Доступні команди:\n"
@@ -586,7 +632,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             listUsersButton.setCallbackData(CallbackData.LIST_USERS.getCallbackData());
             row3.add(listUsersButton);
         }
-
         List<InlineKeyboardButton> row4 = new ArrayList<>();
         InlineKeyboardButton taskDetailsButton =  new InlineKeyboardButton("Деталі завдання");
         taskDetailsButton.setCallbackData(CallbackData.TASK_DETAILS.getCallbackData());
@@ -595,6 +640,14 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         row4.add(taskDetailsButton);
         row4.add(helpButton);
         keyboard.add(row4);
+
+        List<InlineKeyboardButton> row5 = new ArrayList<>();
+        if (userRole == UserRole.ADMIN) {
+            InlineKeyboardButton deleteTaskButton = new InlineKeyboardButton("Видалити завдання");
+            deleteTaskButton.setCallbackData(CallbackData.DELETE_TASK.getCallbackData());
+            row5.add(deleteTaskButton);
+        }
+        keyboard.add(row5);
         markup.setKeyboard(keyboard);
         return markup;
     }
@@ -658,7 +711,8 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         PENDING("PENDING"),
         IN_PROGRESS("IN_PROGRESS"),
         COMPLETED("COMPLETED"),
-        OVERDUE("OVERDUE");
+        OVERDUE("OVERDUE"),
+        DELETE_TASK("deleteTask");
 
 
         private final String callbackData;
@@ -691,6 +745,9 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         STATUS
     }
     private enum TaskDetailsState {
+        ID
+    }
+    private enum TaskDeletionState{
         ID
     }
 }
