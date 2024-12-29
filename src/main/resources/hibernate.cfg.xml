@@ -13,5 +13,6 @@
         <property name="hibernate.show_sql">true</property>
         <mapping class="com.myproject.model.User"/>
         <mapping class="com.myproject.model.Task"/>
+        <mapping class="com.myproject.model.Comment"/>
     </session-factory>
 </hibernate-configuration>
