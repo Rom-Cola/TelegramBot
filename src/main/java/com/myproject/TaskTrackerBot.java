@@ -23,10 +23,14 @@ import java.io.InputStream;
 import java.sql.Date;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class TaskTrackerBot extends TelegramLongPollingBot {
@@ -43,6 +47,8 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
     private final Map<Long, TaskUpdateState> taskUpdateState = new ConcurrentHashMap<>();
     private final Map<Long, Long> taskIdToUpdate = new ConcurrentHashMap<>();
     private final Map<Long, TaskDetailsState> taskDetailsState = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
 
     {
         Properties properties = new Properties();
@@ -58,8 +64,8 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             throw new RuntimeException("Помилка при завантаженні налаштувань", ex);
         }
         createDefaultUsers();
+        scheduler.scheduleAtFixedRate(this::checkTaskDeadlines, 0, 12, TimeUnit.HOURS);
     }
-
     @Override
     public String getBotUsername() {
         return botUsername;
@@ -104,7 +110,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 return;
             }
             handleCommand(chatId,parts);
-
         }
         else if (update.hasCallbackQuery()) {
             handleCallbackQuery(update.getCallbackQuery());
@@ -166,7 +171,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 }
                 break;
         }
-
     }
     private void handleTaskDetailsMessage(Long chatId, String messageText) {
         TaskDetailsState state = taskDetailsState.get(chatId);
@@ -188,7 +192,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             }
         }
     }
-
     private void showAllUsers(Long chatId) {
         List<User> users = userService.getAllUsers();
         if (users.isEmpty()) {
@@ -204,7 +207,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             taskCreationState.put(chatId, TaskCreationState.TEACHER_ID);
         }
     }
-
     private void createTaskFromData(Long chatId, Map<String, String> data) {
         try {
             String title = data.get("title");
@@ -216,7 +218,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 sendMessage(chatId, "Дедлайн не може бути в минулому. Будь ласка, введіть коректну дату.");
                 return;
             }
-            System.out.println("ASdasdadasdasd");
             Long taskUserId = Long.parseLong(data.get("teacherId"));
             Optional<User> userOptional = userService.getUserById(taskUserId);
             if (userOptional.isPresent()){
@@ -466,7 +467,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         markup.setKeyboard(keyboard);
         return markup;
     }
-
     private InlineKeyboardMarkup createStatusKeyboard() {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> keyboard = new ArrayList<>();
@@ -480,7 +480,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         markup.setKeyboard(keyboard);
         return markup;
     }
-
     private Long getUserIdFromChatId(Long chatId) {
         Optional<User> user = userService.getUserByChatId(chatId);
         user.ifPresent(userObj -> logger.info("User id found from chatId {} is: {}", chatId, userObj.getId()));
@@ -535,6 +534,25 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
+    }
+    private void checkTaskDeadlines() {
+        try {
+            List<Task> tasks = taskService.getAllTasks();
+            LocalDate today = LocalDate.now();
+            for (Task task : tasks) {
+                LocalDate deadline = task.getDeadline().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                if (deadline.minusDays(1).isEqual(today)) {
+                    Optional<User> userOptional = userService.getUserById(task.getUser().getId());
+                    userOptional.ifPresent(user ->  sendDeadlineReminder(user.getChatId(), task));
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error when checking deadlines", e);
+        }
+    }
+    private void sendDeadlineReminder(Long chatId, Task task) {
+        String reminderText = String.format("<b>Нагадування!</b>\nЗавдання: <b>%s</b>\nДедлайн через 1 день!", task.getTitle());
+        sendMessage(chatId, reminderText);
     }
     private InlineKeyboardMarkup createCommandKeyboard(UserRole userRole) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
@@ -605,7 +623,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             sendMessage(chatId, taskList);
         }
     }
-
     private void listMyTasks(Long chatId, Long userId) {
         if (userId != null) {
             Optional<User> userOptional =  userService.getUserById(userId);
