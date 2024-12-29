@@ -29,18 +29,32 @@ public class UserRepositoryImpl implements UserRepository {
             logger.error("Error when creating user" , e);
             throw new RuntimeException("Error when creating user", e);
         }
+
     }
 
     @Override
     public Optional<User> getUserById(Long id) {
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-            User user = session.find(User.class,id);
+            User user = session.get(User.class, id);
             return Optional.ofNullable(user);
         } catch (Exception e) {
             logger.error("Error when getting user by id" , e);
             throw new RuntimeException("Error when getting user by id", e);
         }
     }
+    @Override
+    public Optional<User> getUserByChatId(Long chatId) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            Optional<User> user = session.createQuery("from User u where u.chatId = :chatId", User.class)
+                    .setParameter("chatId", chatId)
+                    .uniqueResultOptional();
+            return user;
+        } catch (Exception e) {
+            logger.error("Error when getting user by chatId", e);
+            throw new RuntimeException("Error when getting user by chatId", e);
+        }
+    }
+
 
     @Override
     public List<User> getAllUsers() {
@@ -77,9 +91,14 @@ public class UserRepositoryImpl implements UserRepository {
         Transaction transaction = null;
         try(Session session = HibernateUtil.getSessionFactory().openSession()){
             transaction = session.beginTransaction();
-            session.merge(user);
+            User userToUpdate = session.find(User.class, user.getId());
+            if (userToUpdate != null) {
+                userToUpdate.setName(user.getName());
+                userToUpdate.setRole(user.getRole());
+                session.merge(userToUpdate);
+            }
             transaction.commit();
-            return user;
+            return userToUpdate;
         }catch (Exception e) {
             if(transaction != null) {
                 transaction.rollback();

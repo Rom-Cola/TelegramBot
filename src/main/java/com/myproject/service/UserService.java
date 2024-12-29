@@ -12,4 +12,5 @@ public interface UserService {
     List<User> getAllUsers();
     void deleteUser(Long id);
     User updateUser(User user);
+    Optional<User> getUserByChatId(Long chatId);
 }

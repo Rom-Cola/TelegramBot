@@ -24,7 +24,10 @@ public class UserServiceImpl implements UserService {
     public Optional<User> getUserById(Long id) {
         return userRepository.getUserById(id);
     }
-
+    @Override
+    public Optional<User> getUserByChatId(Long chatId) {
+        return userRepository.getUserByChatId(chatId);
+    }
     @Override
     public List<User> getAllUsers() {
         return userRepository.getAllUsers();
