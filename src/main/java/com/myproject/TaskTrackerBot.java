@@ -21,6 +21,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Date;
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -82,7 +83,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             String messageText = update.getMessage().getText();
             Long chatId = update.getMessage().getChatId();
             String[] parts = messageText.split(" ", 2);
-
             if (parts[0].equals("/start")) {
                 handleStartCommand(chatId,messageText);
                 return;
@@ -178,7 +178,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 Optional<Task> taskOptional = taskService.getTaskById(taskId);
                 if (taskOptional.isPresent()){
                     Task task = taskOptional.get();
-                    sendMessage(chatId, String.format("Завдання id: %d, заголовок: %s, опис: %s, статус: %s ",
+                    sendMessage(chatId, String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Опис:</b> %s\n<b>Статус:</b> %s",
                             task.getId(), task.getTitle(), task.getDescription(), task.getStatus()));
                 }else {
                     sendMessage(chatId, "Завдання з id " + taskId + " не знайдено");
@@ -191,7 +191,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         }
     }
 
-
     private void showAllUsers(Long chatId) {
         List<User> users = userService.getAllUsers();
         if (users.isEmpty()) {
@@ -200,9 +199,9 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Введіть ID викладача:");
         } else {
             String userList = users.stream()
-                    .map(user -> String.format("Користувач id: %d, ім'я: %s, роль: %s",
+                    .map(user -> String.format("<b>Користувач ID:</b> %d\n<b>Ім'я:</b> %s\n<b>Роль:</b> %s",
                             user.getId(), user.getName(), user.getRole()))
-                    .collect(Collectors.joining("\n"));
+                    .collect(Collectors.joining("\n\n"));
             sendMessage(chatId, "Список користувачів:\n" + userList + "\nВведіть ID викладача:");
             taskCreationState.put(chatId, TaskCreationState.TEACHER_ID);
         }
@@ -286,40 +285,6 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 break;
         }
     }
-
-    private void handleUpdateTaskCommand(Long chatId, Long userId, UserRole userRole){
-        if(userRole == UserRole.ADMIN) {
-            List<Task> tasks = taskService.getAllTasks();
-            if (tasks.isEmpty()){
-                sendMessage(chatId, "Завдань не знайдено");
-            } else {
-                String taskList = tasks.stream()
-                        .map(task -> String.format("Завдання id: %d, заголовок: %s, статус: %s ",
-                                task.getId(), task.getTitle(), task.getStatus()))
-                        .collect(Collectors.joining("\n"));
-                sendMessage(chatId, "Список всіх завдань:\n" + taskList + "\nВведіть ID завдання для зміни статусу:");
-            }
-        } else {
-            Optional<User> userOptional =  userService.getUserById(userId);
-            if(userOptional.isPresent()) {
-                User user = userOptional.get();
-                List<Task> tasks = taskService.getTasksByUser(user);
-                if (tasks.isEmpty()) {
-                    sendMessage(chatId, "Завдань для користувача " + user.getName() + " не знайдено");
-                } else {
-                    String taskList = tasks.stream()
-                            .map(task -> String.format("Завдання id: %d, заголовок: %s, статус: %s ",
-                                    task.getId(), task.getTitle(), task.getStatus()))
-                            .collect(Collectors.joining("\n"));
-                    sendMessage(chatId, "Ваш список завдань:\n" + taskList + "\nВведіть ID завдання для зміни статусу:");
-                }
-            } else {
-                sendMessage(chatId, "Користувача не знайдено");
-            }
-        }
-        taskUpdateState.put(chatId, TaskUpdateState.ID);
-    }
-
     private void handleTaskDetailsCommand(Long chatId, Long userId, UserRole userRole) {
         if(userRole == UserRole.ADMIN) {
             List<Task> tasks = taskService.getAllTasks();
@@ -327,9 +292,9 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                 sendMessage(chatId, "Завдань не знайдено");
             } else {
                 String taskList = tasks.stream()
-                        .map(task -> String.format("Завдання id: %d, заголовок: %s, статус: %s ",
+                        .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Статус:</b> %s",
                                 task.getId(), task.getTitle(), task.getStatus()))
-                        .collect(Collectors.joining("\n"));
+                        .collect(Collectors.joining("\n\n"));
                 sendMessage(chatId, "Список всіх завдань:\n" + taskList + "\nВведіть ID завдання для перегляду деталей:");
             }
         } else {
@@ -341,9 +306,9 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                     sendMessage(chatId, "Завдань для користувача " + user.getName() + " не знайдено");
                 } else {
                     String taskList = tasks.stream()
-                            .map(task -> String.format("Завдання id: %d, заголовок: %s, статус: %s ",
+                            .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Статус:</b> %s",
                                     task.getId(), task.getTitle(), task.getStatus()))
-                            .collect(Collectors.joining("\n"));
+                            .collect(Collectors.joining("\n\n"));
                     sendMessage(chatId, "Ваш список завдань:\n" + taskList + "\nВведіть ID завдання для перегляду деталей:");
                 }
             } else {
@@ -352,7 +317,39 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         }
         taskDetailsState.put(chatId, TaskDetailsState.ID);
     }
-
+    private void handleUpdateTaskCommand(Long chatId, Long userId, UserRole userRole){
+        if(userRole == UserRole.ADMIN) {
+            List<Task> tasks = taskService.getAllTasks();
+            if (tasks.isEmpty()){
+                sendMessage(chatId, "Завдань не знайдено");
+            } else {
+                String taskList = tasks.stream()
+                        .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Викладач:</b> %s\n<b>Дедлайн:</b> %s\n<b>Статус:</b> %s",
+                                task.getId(), task.getTitle(),  task.getUser().getName(),
+                                new SimpleDateFormat("yyyy-MM-dd").format(task.getDeadline()), task.getStatus()))
+                        .collect(Collectors.joining("\n\n"));
+                sendMessage(chatId, "Список всіх завдань:\n" + taskList + "\nВведіть ID завдання для зміни статусу:");
+            }
+        } else {
+            Optional<User> userOptional =  userService.getUserById(userId);
+            if(userOptional.isPresent()) {
+                User user = userOptional.get();
+                List<Task> tasks = taskService.getTasksByUser(user);
+                if (tasks.isEmpty()) {
+                    sendMessage(chatId, "Завдань для користувача " + user.getName() + " не знайдено");
+                } else {
+                    String taskList = tasks.stream()
+                            .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Статус:</b> %s",
+                                    task.getId(), task.getTitle(), task.getStatus()))
+                            .collect(Collectors.joining("\n\n"));
+                    sendMessage(chatId, "Ваш список завдань:\n" + taskList + "\nВведіть ID завдання для зміни статусу:");
+                }
+            } else {
+                sendMessage(chatId, "Користувача не знайдено");
+            }
+        }
+        taskUpdateState.put(chatId, TaskUpdateState.ID);
+    }
     private void handleCallbackQuery(CallbackQuery callbackQuery) {
         String callbackData = callbackQuery.getData();
         Long chatId = callbackQuery.getMessage().getChatId();
@@ -559,35 +556,15 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         return markup;
     }
 
-    private void taskDetails(Long chatId, String taskIdDetails) {
-        if(taskIdDetails == null) {
-            sendMessage(chatId,"Будь ласка вкажіть id завдання");
-            return;
-        }
-        try {
-            Long taskId = Long.parseLong(taskIdDetails);
-            Optional<Task> taskOptional = taskService.getTaskById(taskId);
-            if (taskOptional.isPresent()){
-                Task task = taskOptional.get();
-                sendMessage(chatId, String.format("Завдання id: %d, заголовок: %s, опис: %s, статус: %s ",
-                        task.getId(), task.getTitle(), task.getDescription(), task.getStatus()));
-            }else {
-                sendMessage(chatId, "Завдання з id " + taskId + " не знайдено");
-            }
-        }catch (NumberFormatException e) {
-            sendMessage(chatId,"Невірний ID завдання");
-        }
-    }
-
     private void listUsers(Long chatId) {
         List<User> users = userService.getAllUsers();
         if(users.isEmpty()) {
             sendMessage(chatId, "Користувачів не знайдено");
         } else {
             String userList = users.stream()
-                    .map(user -> String.format("Користувач id: %d, ім'я: %s, роль: %s",
+                    .map(user -> String.format("<b>Користувач ID:</b> %d\n<b>Ім'я:</b> %s\n<b>Роль:</b> %s",
                             user.getId(), user.getName(), user.getRole()))
-                    .collect(Collectors.joining("\n"));
+                    .collect(Collectors.joining("\n\n"));
             sendMessage(chatId, userList);
         }
     }
@@ -597,9 +574,10 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Завдань не знайдено");
         } else {
             String taskList = tasks.stream()
-                    .map(task -> String.format("Завдання id: %d, заголовок: %s, статус: %s ",
-                            task.getId(), task.getTitle(), task.getStatus()))
-                    .collect(Collectors.joining("\n"));
+                    .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок:</b> %s\n<b>Викладач:</b> %s\n<b>Дедлайн:</b> %s\n<b>Статус:</b> %s",
+                            task.getId(), task.getTitle(),  task.getUser().getName(),
+                            new SimpleDateFormat("yyyy-MM-dd").format(task.getDeadline()), task.getStatus()))
+                    .collect(Collectors.joining("\n\n"));
             sendMessage(chatId, taskList);
         }
     }
@@ -614,9 +592,9 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
                     sendMessage(chatId, "Завдань для користувача " + user.getName() + " не знайдено");
                 } else {
                     String taskList = tasks.stream()
-                            .map(task -> String.format("Завдання id: %d, заголовок: %s, статус: %s ",
-                                    task.getId(), task.getTitle(), task.getStatus()))
-                            .collect(Collectors.joining("\n"));
+                            .map(task -> String.format("<b>Завдання ID:</b> %d\n<b>Заголовок: %s</b> \n<b>Дедлайн:</b> %s\n<b>Статус:</b> %s",
+                                    task.getId(), task.getTitle(), new SimpleDateFormat("yyyy-MM-dd").format(task.getDeadline()), task.getStatus()))
+                            .collect(Collectors.joining("\n\n"));
                     sendMessage(chatId, taskList);
                 }
             } else {
@@ -626,6 +604,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Користувача не знайдено");
         }
     }
+
     private void sendMessage(Long chatId, String text) {
         sendMessage(chatId, text, null);
     }
@@ -633,6 +612,7 @@ public class TaskTrackerBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
+        message.enableHtml(true);
         if (markup != null) {
             message.setReplyMarkup(markup);
         }
